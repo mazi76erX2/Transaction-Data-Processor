@@ -84,6 +84,7 @@ def load_task(**kwargs: Any) -> None:
     """
     Loads the cleaned transactions into the PostgreSQL table (in 'finance_app' DB).
     Also creates the 'finance_app' database if it doesn't exist.
+    Filters out any transactions that already exist in the table.
     """
     transactions: list[dict[str, Any]] = kwargs["ti"].xcom_pull(
         key="cleaned_transactions"
@@ -112,10 +113,10 @@ def load_task(**kwargs: Any) -> None:
     finally:
         admin_conn.close()
 
-    # Connect to 'finance_app' and load data.
+    # Connect to 'finance_app' and prepare the engine.
     pg_hook = PostgresHook(
         postgres_conn_id="postgres_default",
-        schema="finance_app",
+        schema="finance_app",  # This sets the target DB
     )
     engine = pg_hook.get_sqlalchemy_engine()
 
@@ -133,7 +134,7 @@ def load_task(**kwargs: Any) -> None:
                     amount FLOAT NOT NULL,
                     transaction_date DATE NOT NULL
                 )
-            """
+                """
             )
 
             # Create indexes if they don't exist
@@ -141,26 +142,43 @@ def load_task(**kwargs: Any) -> None:
                 """
                 CREATE INDEX IF NOT EXISTS idx_transactions_user_id
                 ON transactions(user_id)
-            """
+                """
             )
             connection.execute(
                 """
                 CREATE INDEX IF NOT EXISTS idx_transactions_date
                 ON transactions(transaction_date)
-            """
+                """
             )
 
-        # Insert data into the table
-        df.to_sql(
-            "transactions",
-            engine,
-            if_exists="append",  # append so we don't overwrite on reruns
-            index=False,
-            method="multi",
-            chunksize=1000,
-        )
+            # Query existing transaction_ids from the table
+            result = connection.execute("SELECT transaction_id FROM transactions")
+            existing_ids = {row[0] for row in result.fetchall()}
+            logging.info(f"Found {len(existing_ids)} existing transaction IDs.")
 
-        # Log the load operation
+        # Filter out transactions that are already in the database
+        if existing_ids:
+            original_count = len(df)
+            df = df[~df["transaction_id"].isin(existing_ids)]
+            logging.info(
+                f"Filtered out {original_count - len(df)} duplicate transactions."
+            )
+
+        # Insert new transactions if any remain
+        if df.empty:
+            logging.info("No new transactions to load.")
+        else:
+            df.to_sql(
+                "transactions",
+                engine,
+                if_exists="append",  # Append only new data
+                index=False,
+                method="multi",
+                chunksize=1000,
+            )
+            logging.info(f"Loaded {len(df)} new transactions into the database.")
+
+        # Log the load operation in etl_logs table
         with engine.connect() as connection:
             connection.execute(
                 """
@@ -170,7 +188,7 @@ def load_task(**kwargs: Any) -> None:
                     records_loaded INT NOT NULL,
                     status VARCHAR(50) NOT NULL
                 )
-            """
+                """
             )
             connection.execute(
                 """
@@ -179,8 +197,6 @@ def load_task(**kwargs: Any) -> None:
                 """,
                 (datetime.now(), len(df), "SUCCESS"),
             )
-
-        logging.info(f"Loaded {len(df)} transactions into the database.")
 
     except Exception as e:
         logging.error(f"Error loading data into PostgreSQL: {e}")
