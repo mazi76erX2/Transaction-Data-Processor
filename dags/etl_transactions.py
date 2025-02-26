@@ -43,7 +43,34 @@ def extract_task(**kwargs: Any) -> None:
         logging.error(f"Failed to read CSV file: {e}")
         raise
 
-    # Convert DataFrame to a list of dicts (JSON-serializable)
     transactions: list[dict[str, Any]] = df.to_dict(orient="records")
     kwargs["ti"].xcom_push(key="raw_transactions", value=transactions)
     logging.info(f"Extracted {len(transactions)} transactions.")
+
+
+def transform_task(**kwargs: Any) -> None:
+    """
+    Transforms the data:
+      - Converts amounts to float.
+      - Normalizes date formats to YYYY-MM-DD.
+      - Removes duplicate transactions.
+    """
+    transactions: list[dict[str, Any]] = kwargs["ti"].xcom_pull(key="raw_transactions")
+    if not transactions:
+        raise ValueError("No transactions found for transformation.")
+
+    df: pd.DataFrame = pd.DataFrame(transactions)
+
+    df["amount"] = df["amount"].astype(float)
+
+    df["transaction_date"] = pd.to_datetime(df["transaction_date"]).dt.strftime(
+        "%Y-%m-%d"
+    )
+
+    df = df.drop_duplicates(subset=["transaction_id"])
+
+    cleaned_transactions: list[dict[str, Any]] = df.to_dict(orient="records")
+    kwargs["ti"].xcom_push(key="cleaned_transactions", value=cleaned_transactions)
+    logging.info(
+        f"Transformed data: {len(cleaned_transactions)} transactions after cleaning."
+    )
