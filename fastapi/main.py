@@ -1,15 +1,6 @@
-from fastapi import FastAPI, Depends
-from sqlalchemy.ext.asyncio import AsyncSession
-from database import get_db, Transaction
-from pydantic import BaseModel
+import uvicorn
+from app import app
 
-# Create FastAPI app
-app = FastAPI(title="Financial Transactions API")
-
-# Define your models and endpoints here
-
-@app.get("/")
-async def root():
-    return {"message": "Welcome to the Financial Transactions API"}
-
-# TODO: Implement the GET /transactions/{user_id}/summary endpoint here
+if __name__ == "__main__":
+    # Run the FastAPI app using Uvicorn on host 0.0
+    uvicorn.run(app, host="0.0.0.0", port=8000)
