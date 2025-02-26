@@ -62,7 +62,8 @@ def transform_task(**kwargs: Any) -> None:
 
     df: pd.DataFrame = pd.DataFrame(transactions)
 
-    df["amount"] = df["amount"].astype(float)
+    # Clean the "amount" column by removing '$'
+    df["amount"] = df["amount"].replace({"[\$]": ""}, regex=True).astype(float)
 
     df["transaction_date"] = pd.to_datetime(df["transaction_date"]).dt.strftime(
         "%Y-%m-%d"
