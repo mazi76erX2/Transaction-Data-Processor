@@ -62,12 +62,14 @@ def transform_task(**kwargs: Any) -> None:
 
     df: pd.DataFrame = pd.DataFrame(transactions)
 
-    # Clean the "amount" column by removing '$'
-    df["amount"] = df["amount"].replace({"[\$]": ""}, regex=True).astype(float)
+    # Clean the "amount" column by removing '$' and commas
+    df["amount"] = df["amount"].replace({"[\$,]": ""}, regex=True).astype(float)
+    df["amount"] = pd.to_numeric(df["amount"], errors="coerce")
+    df = df.dropna(subset=["amount"])
 
-    df["transaction_date"] = pd.to_datetime(df["transaction_date"]).dt.strftime(
-        "%Y-%m-%d"
-    )
+    df["transaction_date"] = pd.to_datetime(df["transaction_date"], errors="coerce")
+    df = df.dropna(subset=["transaction_date"])
+    df["transaction_date"] = df["transaction_date"].dt.strftime("%Y-%m-%d")
 
     df = df.drop_duplicates(subset=["transaction_id"])
 
@@ -76,6 +78,113 @@ def transform_task(**kwargs: Any) -> None:
     logging.info(
         f"Transformed data: {len(cleaned_transactions)} transactions after cleaning."
     )
+
+
+def load_task(**kwargs: Any) -> None:
+    """
+    Loads the cleaned transactions into the PostgreSQL table (in 'finance_app' DB).
+    Also creates the 'finance_app' database if it doesn't exist.
+    """
+    transactions: list[dict[str, Any]] = kwargs["ti"].xcom_pull(
+        key="cleaned_transactions"
+    )
+    if not transactions:
+        raise ValueError("No transactions found for loading.")
+
+    # Connect to the 'postgres' database to create 'finance_app' if needed.
+    admin_hook = PostgresHook(
+        postgres_conn_id="postgres_default",
+        schema="postgres",
+    )
+    admin_conn = admin_hook.get_conn()
+    admin_conn.autocommit = True
+
+    try:
+        with admin_conn.cursor() as cursor:
+            cursor.execute("SELECT 1 FROM pg_database WHERE datname='finance_app'")
+            exists = cursor.fetchone()
+            if not exists:
+                logging.info("Creating finance_app database since it does not exist.")
+                cursor.execute("CREATE DATABASE finance_app")
+    except Exception as e:
+        logging.error(f"Error checking/creating finance_app database: {e}")
+        raise
+    finally:
+        admin_conn.close()
+
+    # Connect to 'finance_app' and load data.
+    pg_hook = PostgresHook(
+        postgres_conn_id="postgres_default",
+        schema="finance_app",
+    )
+    engine = pg_hook.get_sqlalchemy_engine()
+
+    df: pd.DataFrame = pd.DataFrame(transactions)
+
+    try:
+        with engine.connect() as connection:
+            # Create the transactions table if it doesn't exist
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS transactions (
+                    id SERIAL PRIMARY KEY,
+                    transaction_id VARCHAR(50) UNIQUE NOT NULL,
+                    user_id INT NOT NULL,
+                    amount FLOAT NOT NULL,
+                    transaction_date DATE NOT NULL
+                )
+            """
+            )
+
+            # Create indexes if they don't exist
+            connection.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_transactions_user_id
+                ON transactions(user_id)
+            """
+            )
+            connection.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_transactions_date
+                ON transactions(transaction_date)
+            """
+            )
+
+        # Insert data into the table
+        df.to_sql(
+            "transactions",
+            engine,
+            if_exists="append",  # append so we don't overwrite on reruns
+            index=False,
+            method="multi",
+            chunksize=1000,
+        )
+
+        # Log the load operation
+        with engine.connect() as connection:
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS etl_logs (
+                    id SERIAL PRIMARY KEY,
+                    execution_date TIMESTAMP NOT NULL,
+                    records_loaded INT NOT NULL,
+                    status VARCHAR(50) NOT NULL
+                )
+            """
+            )
+            connection.execute(
+                """
+                INSERT INTO etl_logs (execution_date, records_loaded, status)
+                VALUES (%s, %s, %s)
+                """,
+                (datetime.now(), len(df), "SUCCESS"),
+            )
+
+        logging.info(f"Loaded {len(df)} transactions into the database.")
+
+    except Exception as e:
+        logging.error(f"Error loading data into PostgreSQL: {e}")
+        raise
 
 
 with DAG(
@@ -98,3 +207,11 @@ with DAG(
         python_callable=transform_task,
         provide_context=True,
     )
+
+    load_task = PythonOperator(
+        task_id="load",
+        python_callable=load_task,
+        provide_context=True,
+    )
+
+    extract_task >> transform_task >> load_task
