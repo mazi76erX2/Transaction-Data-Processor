@@ -7,16 +7,17 @@ from airflow import DAG
 from airflow.operators.python import PythonOperator
 from airflow.hooks.postgres_hook import PostgresHook
 
-CSV_FILE_PATH: str = "/data/financial_transactions.csv"
+CSV_FILE_PATH: str = "/opt/airflow//data/financial_transactions.csv"
 
 # Define default arguments for the DAG
 default_args = {
-    "owner": "candidate",
+    "owner": "Xolani Mazibuko",
     "depends_on_past": False,
     "email_on_failure": False,
     "email_on_retry": False,
     "retries": 1,
     "retry_delay": timedelta(minutes=5),
+    "start_date": datetime(2025, 1, 1),
 }
 
 # Define the DAG
@@ -73,4 +74,26 @@ def transform_task(**kwargs: Any) -> None:
     kwargs["ti"].xcom_push(key="cleaned_transactions", value=cleaned_transactions)
     logging.info(
         f"Transformed data: {len(cleaned_transactions)} transactions after cleaning."
+    )
+
+
+with DAG(
+    "etl_transactions",
+    default_args=default_args,
+    description="ETL pipeline for financial transactions",
+    schedule_interval="0 0 * * *",  # Run daily at midnight
+    start_date=datetime(2023, 1, 1),
+    catchup=False,
+) as dag:
+
+    extract_task = PythonOperator(
+        task_id="extract",
+        python_callable=extract_task,
+        provide_context=True,
+    )
+
+    transform_task = PythonOperator(
+        task_id="transform",
+        python_callable=transform_task,
+        provide_context=True,
     )
