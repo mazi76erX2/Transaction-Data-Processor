@@ -239,3 +239,33 @@ When handling large datasets of financial transactions, performance consideratio
 3. **Set up database metrics** to track query performance over time
 
 By implementing these optimizations, the system will be able to handle large volumes of financial transactions while maintaining fast query response times and overall system performance.
+
+## 🧠 Thought Process, Key Decisions, and Trade-offs
+
+### FastAPI Service
+
+**Thought Process:**
+* **Asynchronous Design:** The endpoint is defined as `async def` to leverage asynchronous database operations. This makes the API more scalable under load since it doesn't block on I/O.
+* **Dependency Injection:** Using `Depends(get_db)` ensures that each request gets a fresh, managed async database session, simplifying resource cleanup.
+* **Aggregation in the Database:** Offloading the aggregation work (count, sum, avg) to the database minimizes data transfer and processing in Python, which is efficient and scalable.
+
+**Key Decisions:**
+* **Use of Pydantic for Response Models:** Enforces type safety and auto-generates API documentation.
+* **Using SQLAlchemy Core:** Provides a clear and expressive way to construct queries with built-in functions (`func.count`, etc.) that let the database handle heavy-lifting.
+* **Error Handling with HTTPException:** Ensures that the API returns meaningful HTTP status codes (like 404) when no data is found.
+
+**Trade-offs:**
+* **Complexity vs. Performance:** Asynchronous endpoints add some complexity but greatly improve performance under high concurrency.
+* **Database Load:** Aggregation queries run on the database side; if the table grows very large, you may need further optimizations (indexes, partitioning) to maintain performance.
+
+**Overall Trade-offs:**
+* **Modularity vs. Complexity:** Splitting the process into extraction, transformation, and loading (ETL) improves maintainability but introduces complexity in handling dependencies (managed via XCom).
+* **Performance:** Both FastAPI and Airflow aim to push heavy processing (e.g., aggregation, filtering) down to the database layer to leverage its efficiency, but this requires proper indexing and database tuning.
+* **Scalability:** Asynchronous FastAPI endpoints and batch processing in Airflow can handle large volumes of data if the underlying database is properly optimized (using indexing, partitioning, etc.).
+
+**Additional Considerations:**
+* **Defaulting Instead of Dropping:** By defaulting missing or invalid `transaction_date` values to **2024-01-01** instead of dropping the rows, you preserve all transaction data. This may be important for auditing purposes or to avoid data loss. The trade-off is that you need to clearly document that any missing date is replaced with the default.
+
+* **Logging the Default Action:** Logging both to the Airflow log file and inserting a record into the audit table (etl_logs) ensures that you can later review how many records had their dates defaulted. This helps with both debugging and audit compliance.
+
+Built with ❤️ by [Xolani Mazibuko]
