@@ -67,8 +67,16 @@ def transform_task(**kwargs: Any) -> None:
     df["amount"] = pd.to_numeric(df["amount"], errors="coerce")
     df = df.dropna(subset=["amount"])
 
+    # Convert transaction_date to datetime; coerce errors to NaN
     df["transaction_date"] = pd.to_datetime(df["transaction_date"], errors="coerce")
-    df = df.dropna(subset=["transaction_date"])
+    # Count how many rows have an invalid/missing date
+    missing_date_count = df["transaction_date"].isna().sum()
+    if missing_date_count > 0:
+        logging.warning(
+            f"{missing_date_count} rows had invalid or missing transaction_date; defaulting to 2024-01-01"
+        )
+    # Fill missing transaction_date values with default date "2024-01-01"
+    df["transaction_date"] = df["transaction_date"].fillna(pd.Timestamp("2024-01-01"))
     df["transaction_date"] = df["transaction_date"].dt.strftime("%Y-%m-%d")
 
     df = df.drop_duplicates(subset=["transaction_id"])

@@ -19,22 +19,22 @@ This system consists of three main components:
 
 ```
 .
-├── dags/                   # Airflow DAGs
-│   └── etl_transactions.py # Main ETL pipeline
-├── data/                   # Data directory
-│   └── financial_transactions.csv  # Sample data file
-├── fastapi/                # FastAPI application
-│   ├── app.py              # Main API application
-│   ├── Dockerfile          # Docker configuration for FastAPI
-│   └── requirements.txt    # Python dependencies
-├── logs/                   # Airflow log files
-├── fastapi/                # FastAPI application
-├── schema.sql              # Database schema
-├── .gitignore              # Git ignore file
-├── init-db.sql             # Database initialization script
-├── docker-compose.yml      # Docker Compose configuration
-├── README.md               # This file
-├── README-task.md          # Task file
+├── dags/                                       # Airflow DAGs
+│   └── etl_transactions.py                     # Main ETL pipeline
+├── data/                                       # Data directory
+│   └── financial_transactions.csv              # Sample data file
+├── fastapi/                                    # FastAPI application
+│   ├── app.py                                  # Main API application
+│   ├── Dockerfile                              # Docker configuration for FastAPI
+│   └── requirements.txt                        # Python dependencies
+├── logs/                                       # Airflow log files
+├── fastapi/                                    # FastAPI application
+├── schema.sql                                  # Database schema
+├── .gitignore                                  # Git ignore file
+├── init-db.sql                                 # Database initialization script
+├── docker-compose.yml                          # Docker Compose configuration
+├── README.md                                   # This file
+├── README-task.md                              # Task file
 └── Take-Home Assignment_Backend Engineer.md    # Other task file
 ```
 
@@ -63,6 +63,12 @@ This system consists of three main components:
    - Airflow: http://localhost:8080 (username: admin, password: admin)
    - FastAPI: http://localhost:8000 (API documentation: http://localhost:8000/docs)
    - PostgreSQL: localhost:5432 (username: airflow, password: airflow)
+
+5. Change Postgres database settings if you receive errors with connection in your logs:
+   - On the Airflow dashboard click on the Admin dropdown then connections.
+   - Click on edit record on the postgres_default row
+   - Add the following details: - Schema: `finance_app`, - Login: `airflow`, - Password: `airflow`, Host: `postgres`, Port: `5432`
+   - Click Save
 
 ## Using the Airflow DAG
 
@@ -143,7 +149,7 @@ docker compose exec postgres psql -U airflow
 
 When handling large datasets of financial transactions, performance considerations become critical. Here are key strategies to optimize database queries and overall system performance:
 
-## Indexing Strategies
+### Indexing Strategies
 
 1. **Create appropriate indexes** on frequently queried columns:
    - Primary key (`id`) is automatically indexed
@@ -158,7 +164,7 @@ When handling large datasets of financial transactions, performance consideratio
    WHERE amount > 10000;
    ```
 
-## Query Optimization
+### Query Optimization
 
 1. **Use specific column selection** instead of `SELECT *`:
    ```sql
@@ -183,7 +189,7 @@ When handling large datasets of financial transactions, performance consideratio
    WHERE user_id = 123;
    ```
 
-## Database Architecture
+### Database Architecture
 
 1. **Partitioning** the transactions table:
    - Time-based partitioning by month or year (e.g., `transactions_2024_01`, `transactions_2024_02`)
@@ -207,7 +213,7 @@ When handling large datasets of financial transactions, performance consideratio
 
 3. **Connection pooling** to manage database connections efficiently
 
-## Application-Level Optimizations
+### Application-Level Optimizations
 
 1. **Implement caching** for frequently accessed data:
    - Redis for API response caching
@@ -221,7 +227,7 @@ When handling large datasets of financial transactions, performance consideratio
 
 3. **Async database operations** in FastAPI to handle concurrent requests efficiently
 
-## Monitoring and Maintenance
+### Monitoring and Maintenance
 
 1. **Regular VACUUM and ANALYZE** operations to maintain index efficiency
 
