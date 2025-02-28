@@ -158,35 +158,69 @@ When handling large datasets of financial transactions, performance consideratio
    - Compound indexes for queries that filter on multiple columns (e.g., `(user_id, transaction_date)`)
 
 2. **Consider partial indexes** for specific query patterns:
-   ```sql
-   -- Example: Index for transactions with large amounts (e.g., > $10,000)
-   CREATE INDEX idx_large_transactions ON transactions(user_id, amount)
-   WHERE amount > 10000;
+   ```python
+   # Example: Index for transactions with large amounts (e.g., > $10,000)
+   class Transaction(Base):
+      __tablename__ = 'transactions'
+      
+      transaction_id = Column(Integer, primary_key=True)
+      user_id = Column(Integer, index=True)
+      amount = Column(Float)
+      transaction_date = Column(DateTime)
+      
+      # Create a partial index for large transactions
+      __table_args__ = (
+         Index('idx_large_transactions', 'user_id', 'amount', 
+               postgresql_where=text('amount > 10000')),
+      )
    ```
 
 ### Query Optimization
 
 1. **Use specific column selection** instead of `SELECT *`:
-   ```sql
-   -- Instead of SELECT * FROM transactions
-   SELECT transaction_id, amount, transaction_date FROM transactions WHERE user_id = 123;
+   ```python
+   # Instead of SELECT * FROM transactions
+  def get_specific_user_transactions(db: Session, user_id: int):
+    query = select(
+        Transaction.transaction_id,
+        Transaction.amount,
+        Transaction.transaction_date
+    ).where(Transaction.user_id == user_id)
+    
+    return db.execute(query).fetchall()
    ```
 
 2. **Implement pagination** for large result sets:
-   ```sql
-   SELECT * FROM transactions WHERE user_id = 123 
-   ORDER BY transaction_date DESC LIMIT 100 OFFSET 0;
+   ```python
+   def get_paginated_user_transactions(db: Session, user_id: int, limit: int = 100, offset: int = 0):
+      query = select(Transaction).where(
+         Transaction.user_id == user_id
+      ).order_by(
+         Transaction.transaction_date.desc()
+      ).limit(limit).offset(offset)
+
+      return db.execute(query).fetchall()
    ```
 
 3. **Optimize aggregation queries** using window functions for complex analytics:
-   ```sql
-   -- Efficient way to get running totals
-   SELECT 
-     transaction_date, 
-     amount, 
-     SUM(amount) OVER (PARTITION BY user_id ORDER BY transaction_date) as running_total
-   FROM transactions 
-   WHERE user_id = 123;
+   ```python
+   # Efficient way to get running totals
+   from sqlalchemy.sql import func
+   from sqlalchemy import over
+
+   def get_running_totals(db: Session, user_id: int):
+      running_total = func.sum(Transaction.amount).over(
+         partition_by=Transaction.user_id,
+         order_by=Transaction.transaction_date
+      ).label('running_total')
+      
+      query = select(
+         Transaction.transaction_date,
+         Transaction.amount,
+         running_total
+      ).where(Transaction.user_id == user_id)
+      
+      return db.execute(query).fetchall()
    ```
 
 ### Database Architecture
@@ -232,7 +266,7 @@ When handling large datasets of financial transactions, performance consideratio
 1. **Regular VACUUM and ANALYZE** operations to maintain index efficiency
 
 2. **Monitor slow queries** using PostgreSQL's query planner:
-   ```sql
+   ```python
    EXPLAIN ANALYZE SELECT * FROM transactions WHERE user_id = 123;
    ```
 
