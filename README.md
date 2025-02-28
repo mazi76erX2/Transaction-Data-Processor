@@ -191,6 +191,7 @@ When handling large datasets of financial transactions, performance consideratio
    ```
 
 2. **Implement pagination** for large result sets:
+
    ```python
    def get_paginated_user_transactions(db: Session, user_id: int, limit: int = 100, offset: int = 0):
       query = select(Transaction).where(
