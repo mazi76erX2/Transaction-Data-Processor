@@ -180,18 +180,17 @@ When handling large datasets of financial transactions, performance consideratio
 1. **Use specific column selection** instead of `SELECT *`:
    ```python
    # Instead of SELECT * FROM transactions
-  def get_specific_user_transactions(db: Session, user_id: int):
-    query = select(
-        Transaction.transaction_id,
-        Transaction.amount,
-        Transaction.transaction_date
-    ).where(Transaction.user_id == user_id)
-    
-    return db.execute(query).fetchall()
+   def get_specific_user_transactions(db: Session, user_id: int):
+      query = select(
+         Transaction.transaction_id,
+         Transaction.amount,
+         Transaction.transaction_date
+      ).where(Transaction.user_id == user_id)
+      
+      return db.execute(query).fetchall()
    ```
 
 2. **Implement pagination** for large result sets:
-
    ```python
    def get_paginated_user_transactions(db: Session, user_id: int, limit: int = 100, offset: int = 0):
       query = select(Transaction).where(
